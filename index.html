@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SkillCraft Task 04 – To‑Do Web App</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+  <style>
+    :root{
+      --bg:#0b1020;--panel:#121936;--surface:#0e152a;--text:#eaf2ff;--muted:#a9b3c9;--accent:#4fd1c5;--accent2:#7aa2ff;--border:#1e2a4a;--radius:16px
+    }
+    *{box-sizing:border-box}
+    html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font-family:Inter,system-ui,Segoe UI,Roboto,Arial}
+    a{color:inherit;text-decoration:none}
+    .app{display:grid;grid-template-columns:280px 1fr;min-height:100svh}
+
+    /* Sidebar */
+    .sidebar{background:var(--panel);border-right:1px solid var(--border);padding:18px;display:flex;flex-direction:column;gap:14px}
+    .logo{font-weight:800;letter-spacing:.4px}
+    .logo span{color:var(--accent)}
+    .lists{display:flex;flex-direction:column;gap:8px}
+    .list-btn{display:flex;align-items:center;justify-content:space-between;gap:8px;background:#ffffff0f;border:1px solid var(--border);padding:10px 12px;border-radius:12px;cursor:pointer}
+    .list-btn.active{outline:2px solid #ffffff33}
+    .list-row{display:flex;align-items:center;gap:10px}
+    .muted{color:var(--muted)}
+    .row{display:flex;gap:8px}
+    .add-list{display:flex;gap:8px}
+    .add-list input{flex:1;padding:10px;border-radius:10px;border:1px solid var(--border);background:var(--surface);color:var(--text)}
+    .btn{padding:10px 12px;border-radius:12px;border:1px solid var(--border);background:#ffffff12;color:var(--text);font-weight:600;cursor:pointer}
+    .btn.primary{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#081120;border-color:transparent}
+
+    /* Main */
+    .main{padding:22px}
+    .panel{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:18px}
+    .header{display:flex;align-items:center;justify-content:space-between;gap:10px}
+    h1{margin:0;font-size:clamp(20px,2.6vw,28px)}
+
+    /* Task Form */
+    form.task-form{display:grid;grid-template-columns:1fr 200px 140px auto;gap:10px;margin-top:10px}
+    .task-form input, .task-form select{padding:12px;border-radius:10px;border:1px solid var(--border);background:var(--surface);color:var(--text)}
+    @media (max-width:900px){
+      .app{grid-template-columns:1fr}
+      .sidebar{position:sticky;top:0;z-index:10}
+      form.task-form{grid-template-columns:1fr 1fr}
+    }
+
+    /* Tasks list */
+    .tasks{margin-top:14px;display:flex;flex-direction:column;gap:10px}
+    .task{display:grid;grid-template-columns:28px 1fr 210px 130px 90px;gap:10px;align-items:center;background:var(--surface);border:1px solid var(--border);padding:10px;border-radius:12px}
+    .task .title{font-weight:600}
+    .task.done{opacity:.7}
+    .task small{color:var(--muted)}
+    .task .actions{display:flex;gap:6px;justify-content:flex-end}
+    .chip{padding:6px 10px;border-radius:999px;background:#ffffff12;border:1px solid var(--border)}
+
+    .empty{color:var(--muted);text-align:center;padding:20px}
+  </style>
+</head>
+<body>
+  <div class="app">
+    <!-- Sidebar: Lists -->
+    <aside class="sidebar">
+      <div class="logo">Skill<span>Craft</span> – To‑Do</div>
+      <div class="muted">Lists</div>
+      <div id="lists" class="lists"></div>
+      <div class="add-list">
+        <input id="newListName" placeholder="New list name (e.g. College)" />
+        <button id="addList" class="btn">Add</button>
+      </div>
+      <div class="muted" style="margin-top:auto">Data is saved in your browser (localStorage).</div>
+    </aside>
+
+    <!-- Main: Tasks -->
+    <main class="main">
+      <div class="panel">
+        <div class="header">
+          <h1 id="listTitle">Inbox</h1>
+          <div class="row">
+            <select id="filter">
+              <option value="all">All</option>
+              <option value="active">Active</option>
+              <option value="completed">Completed</option>
+              <option value="overdue">Overdue</option>
+              <option value="today">Due Today</option>
+            </select>
+            <button id="clearCompleted" class="btn">Clear Completed</button>
+          </div>
+        </div>
+
+        <form id="taskForm" class="task-form" autocomplete="off">
+          <input id="taskTitle" required placeholder="Task title (e.g. Build Tic‑Tac‑Toe UI)" />
+          <input id="taskDate" type="date" />
+          <input id="taskTime" type="time" />
+          <button class="btn primary" type="submit">Add Task</button>
+        </form>
+
+        <div id="tasks" class="tasks"></div>
+        <div id="empty" class="empty" hidden>No tasks yet. Create one above 👆</div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    // === Data model (stored in localStorage) ===
+    const storeKey='skillcraft.todo.v1';
+    const defaultData={
+      lists:[{id:'inbox',name:'Inbox'}],
+      activeList:'inbox',
+      tasks:{} // map listId -> array of tasks
+    };
+    const state = load();
+
+    function load(){
+      try{ return JSON.parse(localStorage.getItem(storeKey))||structuredClone(defaultData);}catch(e){return structuredClone(defaultData)}
+    }
+    function save(){ localStorage.setItem(storeKey, JSON.stringify(state)); }
+
+    // helpers
+    const $ = sel => document.querySelector(sel);
+    const listsEl = $('#lists');
+    const listTitle = $('#listTitle');
+    const tasksEl = $('#tasks');
+    const emptyEl = $('#empty');
+
+    function uid(){return Math.random().toString(36).slice(2,10)}
+
+    // === Lists UI ===
+    function renderLists(){
+      listsEl.innerHTML='';
+      state.lists.forEach(l=>{
+        const btn=document.createElement('button');
+        btn.className='list-btn'+(l.id===state.activeList?' active':'');
+        btn.innerHTML=`<span class="list-row"><strong>${l.name}</strong></span>`;
+        btn.addEventListener('click',()=>{state.activeList=l.id; save(); render();});
+        listsEl.appendChild(btn);
+      })
+    }
+
+    $('#addList').addEventListener('click',()=>{
+      const name = $('#newListName').value.trim(); if(!name) return;
+      const id = name.toLowerCase().replace(/[^a-z0-9]+/g,'-')+'-'+uid();
+      state.lists.push({id,name}); state.tasks[id]=[]; state.activeList=id; $('#newListName').value='';
+      save(); render();
+    });
+
+    // === Tasks ===
+    function getTasks(){ return state.tasks[state.activeList] ||= []; }
+
+    function renderTasks(){
+      const items = [...getTasks()];
+      // sort by due date
+      items.sort((a,b)=> (a.due||'')<(b.due||'')?-1: (a.due||'')>(b.due||'')?1:0 );
+
+      const filter = $('#filter').value;
+      const todayStr = new Date().toISOString().slice(0,10);
+      const now = new Date();
+
+      const filtered = items.filter(t=>{
+        if(filter==='active') return !t.done;
+        if(filter==='completed') return !!t.done;
+        if(filter==='overdue') return t.due && !t.done && new Date(t.due) < now;
+        if(filter==='today') return t.due && t.due.startsWith(todayStr);
+        return true;
+      });
+
+      tasksEl.innerHTML='';
+      if(filtered.length===0){ emptyEl.hidden=false; return; }
+      emptyEl.hidden=true;
+
+      filtered.forEach(t=>{
+        const row=document.createElement('div');
+        row.className='task'+(t.done?' done':'');
+        const dueLabel = t.due? new Date(t.due).toLocaleString(): '—';
+        const listName = state.lists.find(l=>l.id===state.activeList)?.name || 'Inbox';
+        row.innerHTML=`
+          <input type="checkbox" ${t.done?'checked':''} aria-label="mark done">
+          <div class="title">${t.title}</div>
+          <div><span class="chip">${dueLabel}</span></div>
+          <div class="muted">${listName}</div>
+          <div class="actions">
+            <button class="btn" data-act="edit">Edit</button>
+            <button class="btn" data-act="del">Delete</button>
+          </div>`;
+        const [chk,titleDiv,dueDiv] = row.children;
+        chk.addEventListener('change',()=>{t.done=chk.checked; save(); renderTasks();});
+        row.querySelector('[data-act="del"]').addEventListener('click',()=>{removeTask(t.id)});
+        row.querySelector('[data-act="edit"]').addEventListener('click',()=>editTask(t));
+        tasksEl.appendChild(row);
+      });
+    }
+
+    function removeTask(id){
+      const arr=getTasks(); const idx=arr.findIndex(t=>t.id===id); if(idx>-1) arr.splice(idx,1); save(); renderTasks();
+    }
+
+    function editTask(t){
+      const title = prompt('Edit title', t.title); if(title===null) return;
+      let due= t.due? new Date(t.due): null;
+      const dateStr = prompt('Edit date (YYYY-MM-DD) or blank', due? due.toISOString().slice(0,10): '');
+      let timeStr = '';
+      if(dateStr!=='' && dateStr!==null){
+        timeStr = prompt('Edit time (HH:MM, 24h) or blank', due? due.toTimeString().slice(0,5): '');
+      }
+      t.title=title.trim()||t.title;
+      t.due = dateStr? new Date(dateStr + (timeStr? 'T'+timeStr: 'T00:00')).toISOString(): '';
+      save(); renderTasks();
+    }
+
+    // add task
+    $('#taskForm').addEventListener('submit',e=>{
+      e.preventDefault();
+      const title=$('#taskTitle').value.trim(); if(!title) return;
+      const date=$('#taskDate').value; const time=$('#taskTime').value;
+      const due = date? new Date(date + (time? 'T'+time: 'T00:00')).toISOString(): '';
+      const task={id:uid(), title, due, done:false};
+      getTasks().push(task);
+      $('#taskTitle').value=''; $('#taskDate').value=''; $('#taskTime').value='';
+      save(); renderTasks();
+    });
+
+    $('#filter').addEventListener('change',renderTasks);
+    $('#clearCompleted').addEventListener('click',()=>{
+      const arr=getTasks(); state.tasks[state.activeList]=arr.filter(t=>!t.done); save(); renderTasks();
+    });
+
+    // initial setup
+    if(!state.tasks['inbox']) state.tasks['inbox']=[];
+    function render(){ renderLists(); listTitle.textContent = state.lists.find(l=>l.id===state.activeList)?.name || 'Inbox'; renderTasks(); }
+    render();
+  </script>
+</body>
+</html>
